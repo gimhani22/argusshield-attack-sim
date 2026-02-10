@@ -1,4 +1,4 @@
-# SentriX-Attack-Sim
+# ArgusShield-Attack-Sim
 
 ## ⚠️ IMPORTANT WARNING ⚠️
 
