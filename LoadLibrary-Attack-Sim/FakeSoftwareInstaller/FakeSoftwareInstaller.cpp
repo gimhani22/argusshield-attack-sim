@@ -218,3 +218,86 @@ void CreateControls(HWND hwnd)
         hwnd, (HMENU)4, nullptr, nullptr);
     SendMessage(hwndFinishBtn, WM_SETFONT, (WPARAM)hFontButton, TRUE);
 }
+LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
+{
+    switch (uMsg)
+    {
+    case WM_CTLCOLORSTATIC:
+    {
+        HDC hdcStatic = (HDC)wParam;
+        HWND hwndStatic = (HWND)lParam;
+
+        // Header background (dark blue)
+        if (GetDlgCtrlID(hwndStatic) == 100)
+        {
+            SetBkColor(hdcStatic, RGB(44, 62, 80));
+            return (LRESULT)CreateSolidBrush(RGB(44, 62, 80));
+        }
+
+        // White text for header elements
+        if (hwndStatic == FindWindowEx(hwnd, nullptr, L"STATIC", L"ProVideo Editor 2024") ||
+            hwndStatic == FindWindowEx(hwnd, nullptr, L"STATIC", L"Professional Video Editing Software"))
+        {
+            SetTextColor(hdcStatic, RGB(255, 255, 255));
+            SetBkColor(hdcStatic, RGB(44, 62, 80));
+            return (LRESULT)CreateSolidBrush(RGB(44, 62, 80));
+        }
+
+        // Logo color (blue)
+        if (hwndStatic == FindWindowEx(hwnd, nullptr, L"STATIC", L"●"))
+        {
+            SetTextColor(hdcStatic, RGB(52, 152, 219));
+            SetBkColor(hdcStatic, RGB(44, 62, 80));
+            return (LRESULT)CreateSolidBrush(RGB(44, 62, 80));
+        }
+
+        // Default: transparent background
+        SetBkMode(hdcStatic, TRANSPARENT);
+        return (LRESULT)GetStockObject(NULL_BRUSH);
+    }
+
+    case WM_COMMAND:
+    {
+        int wmId = LOWORD(wParam);
+        int wmEvent = HIWORD(wParam);
+
+        // Install button - ONE CLICK ATTACK
+        if (wmId == 3 && wmEvent == BN_CLICKED)
+        {
+            if (!isInstalling)
+            {
+                StartInstallation();
+            }
+        }
+
+        // Cancel/Finish buttons
+        if (wmId == 2 || wmId == 4)
+        {
+            DestroyWindow(hwnd);
+        }
+
+        break;
+    }
+
+    case WM_DESTROY:
+        PostQuitMessage(0);
+        return 0;
+
+    case WM_PAINT:
+    {
+        PAINTSTRUCT ps;
+        HDC hdc = BeginPaint(hwnd, &ps);
+
+        // Draw header background
+        RECT headerRect = { 0, 0, 600, 80 };
+        HBRUSH headerBrush = CreateSolidBrush(RGB(44, 62, 80));
+        FillRect(hdc, &headerRect, headerBrush);
+        DeleteObject(headerBrush);
+
+        EndPaint(hwnd, &ps);
+        return 0;
+    }
+    }
+
+    return DefWindowProc(hwnd, uMsg, wParam, lParam);
+}
