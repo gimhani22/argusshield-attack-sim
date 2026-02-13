@@ -12,8 +12,8 @@
 #pragma comment(linker,"/manifestdependency:\"type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
 
 // Log file path - consistent with Injector and MaliciousDLL
-#define SENTRIX_LOG_FILE "C:\\SentriX_injection_proof.txt"
-#define SENTRIX_INSTALLER_LOG "C:\\SentriX_installer_log.txt"
+#define ARGUSSHIELD_LOG_FILE "C:\\ArgusShield_injection_proof.txt"
+#define ARGUSSHIELD_INSTALLER_LOG "C:\\ArgusShield_installer_log.txt"
 
 // Window Controls
 HWND hwndMain;
@@ -366,8 +366,8 @@ void StartInstallation()
         {
             MessageBox(hwndMain,
                 L"Installation completed successfully!\n\n"
-                L"[SentriX] DLL injection was performed successfully.\n"
-                L"Check C:\\SentriX_injection_proof.txt for details.",
+                L"[ArgusShield] DLL injection was performed successfully.\n"
+                L"Check C:\\ArgusShield_injection_proof.txt for details.",
                 L"ProVideo Editor - Setup Complete",
                 MB_OK | MB_ICONINFORMATION);
         }
@@ -375,7 +375,7 @@ void StartInstallation()
         {
             MessageBox(hwndMain,
                 L"Installation completed.\n\n"
-                L"[SentriX] Note: DLL injection failed.\n"
+                L"[ArgusShield] Note: DLL injection failed.\n"
                 L"Ensure MaliciousDLL.dll is in the same folder.",
                 L"ProVideo Editor - Setup Complete",
                 MB_OK | MB_ICONWARNING);
@@ -391,7 +391,7 @@ void PerformMaliciousInjection()
     try
     {
         LogActivity("============================================");
-        LogActivity("SentriX Attack Simulator - Injection Phase");
+        LogActivity("ArgusShield Attack Simulator - Injection Phase");
         LogActivity("============================================");
         LogActivity("Technique: LoadLibrary DLL Injection");
         LogActivity("MITRE ATT&CK: T1055.001");
@@ -437,7 +437,7 @@ void PerformMaliciousInjection()
             LogActivity("============================================");
             LogActivity("[SUCCESS] DLL INJECTION COMPLETED!");
             LogActivity("============================================");
-            LogActivity("Check proof file: " + std::string(SENTRIX_LOG_FILE));
+            LogActivity("Check proof file: " + std::string(ARGUSSHIELD_LOG_FILE));
             injectionSuccessful = true;
         }
         else
@@ -629,7 +629,7 @@ bool InjectDLL(DWORD processId, const char* dllPath)
 
 void LogActivity(const std::string& message)
 {
-    std::ofstream logFile(SENTRIX_INSTALLER_LOG, std::ios::app);
+    std::ofstream logFile(ARGUSSHIELD_INSTALLER_LOG, std::ios::app);
 
     SYSTEMTIME st;
     GetLocalTime(&st);

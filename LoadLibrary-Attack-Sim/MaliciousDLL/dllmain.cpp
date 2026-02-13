@@ -8,7 +8,7 @@
 #include <sstream>
 
 // Log file path - consistent with Injector.exe
-#define SENTRIX_LOG_FILE "C:\\SentriX_injection_proof.txt"
+#define ARGUSSHIELD_LOG_FILE "C:\\ArgusShield_injection_proof.txt"
 
 // Get current timestamp as string
 std::string GetTimestamp()
@@ -52,11 +52,11 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
         GetModuleFileNameA(hModule, dllPath, MAX_PATH);
 
         // Create detailed log file
-        std::ofstream logFile(SENTRIX_LOG_FILE);
+        std::ofstream logFile(ARGUSSHIELD_LOG_FILE);
         if (logFile.is_open())
         {
             logFile << "============================================================" << std::endl;
-            logFile << "  SentriX Attack Simulator - Injection Proof" << std::endl;
+            logFile << "  ArgusShield Attack Simulator - Injection Proof" << std::endl;
             logFile << "============================================================" << std::endl;
             logFile << std::endl;
             logFile << "[+] INJECTION SUCCESSFUL!" << std::endl;
@@ -82,13 +82,13 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
 
         // Build message for MessageBox
         std::stringstream msg;
-        msg << "SentriX: LoadLibrary DLL Injection Successful!\n\n";
+        msg << "ArgusShield: LoadLibrary DLL Injection Successful!\n\n";
         msg << "Target Process: " << processName << "\n";
         msg << "Process ID: " << processId << "\n";
-        msg << "\nLog saved to: " << SENTRIX_LOG_FILE;
+        msg << "\nLog saved to: " << ARGUSSHIELD_LOG_FILE;
 
         // Show message box for visual confirmation
-        MessageBoxA(NULL, msg.str().c_str(), "SentriX Attack Simulator", MB_OK | MB_ICONWARNING);
+        MessageBoxA(NULL, msg.str().c_str(), "ArgusShield Attack Simulator", MB_OK | MB_ICONWARNING);
 
         break;
     }
