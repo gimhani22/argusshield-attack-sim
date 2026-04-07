@@ -1,8 +1,17 @@
+// ManualMapping-Attack-Sim.cpp
+// ArgusShield Attack Simulator - Manual Map DLL Injection (T1055)
+// Console application that manually maps a DLL into notepad.exe.
+
 #include <iostream>
 #include <string>
 #include <windows.h>
 #include <shellapi.h>
+#include "Logger.h"
+#include "MappingLogic.h"
 
+// ============================================================
+// Admin privilege check and elevation
+// ============================================================
 bool IsRunningAsAdmin()
 {
     BOOL isAdmin = FALSE;
@@ -44,70 +53,12 @@ bool RelaunchAsAdmin()
     return reinterpret_cast<INT_PTR>(result) > 32;
 }
 
-void SimulateDelay(const std::string& msg, int ms)
-{
-    std::cout << msg << std::endl;
-    Sleep(ms);
-}
-
-void SimulateManualMapping()
-{
-    std::cout << "\n[FakeUpdate] Starting Manual Mapping simulation...\n";
-
-    // Step 1: Allocate executable memory (this is key for detection)
-    SimulateDelay("[+] Allocating executable memory (RWX)...", 1000);
-
-    LPVOID execMemory = VirtualAlloc(
-        NULL,
-        1024,
-        MEM_COMMIT | MEM_RESERVE,
-        PAGE_EXECUTE_READWRITE   // ?? Important for your detection
-    );
-
-    if (!execMemory)
-    {
-        std::cout << "[-] Memory allocation failed!\n";
-        return;
-    }
-
-    // Step 2: Simulate writing PE sections
-    SimulateDelay("[+] Writing PE sections into memory...", 1000);
-
-    memset(execMemory, 0x90, 1024); // NOP-like filler
-
-    // Step 3: Simulate import resolution
-    SimulateDelay("[+] Resolving imports manually...", 1000);
-
-    // Step 4: Simulate execution from memory
-    SimulateDelay("[+] Executing mapped image (simulated)...", 1000);
-
-    // ?? This is what your detection system should catch
-    std::cout << "[SIMULATION] Executing from unbacked executable memory\n";
-
-    // Optional: create a thread to simulate execution
-    HANDLE hThread = CreateThread(
-        NULL,
-        0,
-        (LPTHREAD_START_ROUTINE)execMemory,
-        NULL,
-        0,
-        NULL
-    );
-
-    if (hThread)
-    {
-        std::cout << "[+] Thread created to execute memory region\n";
-        CloseHandle(hThread);
-    }
-
-    // Cleanup (important for safety)
-    VirtualFree(execMemory, 0, MEM_RELEASE);
-
-    SimulateDelay("[+] Manual Mapping simulation completed.\n", 1000);
-}
-
+// ============================================================
+// Entry Point
+// ============================================================
 int main()
 {
+    // Check for admin privileges
     if (!IsRunningAsAdmin())
     {
         std::cout << "[!] Admin privileges required. Relaunching...\n";
@@ -116,22 +67,31 @@ int main()
             std::cout << "[-] Failed to relaunch with admin privileges.\n";
             return 1;
         }
-
         return 0;
     }
 
-    std::cout << "=====================================\n";
-    std::cout << "   Windows Critical Update Service   \n";
-    std::cout << "=====================================\n\n";
+    std::cout << "================================================\n";
+    std::cout << "  ArgusShield - Manual Mapping Attack Simulator  \n";
+    std::cout << "  Technique: T1055 - Manual Map DLL Injection    \n";
+    std::cout << "================================================\n\n";
 
-    SimulateDelay("Checking for updates...", 1500);
-    SimulateDelay("Downloading security patch...", 1500);
-    SimulateDelay("Installing update...\n", 1500);
+    // Perform the manual mapping attack
+    bool success = PerformManualMapping();
 
-    SimulateManualMapping();
+    std::cout << "\n";
 
-    std::cout << "\n[+] Update Installed Successfully.\n";
+    if (success)
+    {
+        std::cout << "[*] Manual Mapping completed successfully.\n";
+        std::cout << "[*] Check C:\\ArgusShield_mapping_log.txt for detailed logs.\n";
+    }
+    else
+    {
+        std::cout << "[!] Manual Mapping encountered issues.\n";
+        std::cout << "[!] Check C:\\ArgusShield_mapping_log.txt for details.\n";
+    }
 
+    std::cout << "\n";
     system("pause");
     return 0;
 }

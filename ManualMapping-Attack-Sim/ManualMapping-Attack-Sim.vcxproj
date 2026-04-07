@@ -136,6 +136,12 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="ManualMapping-Attack-Sim.cpp" />
+    <ClCompile Include="MappingLogic.cpp" />
+    <ClCompile Include="Logger.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="MappingLogic.h" />
+    <ClInclude Include="Logger.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
