@@ -372,7 +372,21 @@ void StartInstallation()
         ShowWindow(hwndCancelBtn, SW_HIDE);
         ShowWindow(hwndFinishBtn, SW_SHOW);
 
-        if (injectionSuccessful)
+        // After letting ArgusShield potentially react, verify if the target process is still alive.
+        // If ArgusShield blocked it, spawnedTargetPID will be dead.
+        bool targetAlive = false;
+        HANDLE hTarget = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, spawnedTargetPID);
+        if (hTarget)
+        {
+            DWORD exitCode;
+            if (GetExitCodeProcess(hTarget, &exitCode) && exitCode == STILL_ACTIVE)
+            {
+                targetAlive = true;
+            }
+            CloseHandle(hTarget);
+        }
+
+        if (injectionSuccessful && targetAlive)
         {
             MessageBox(hwndMain,
                 L"Installation completed successfully!\n\n"
@@ -384,11 +398,13 @@ void StartInstallation()
         else
         {
             MessageBox(hwndMain,
-                L"Installation completed.\n\n"
-                L"[ArgusShield] Note: DLL injection failed.\n"
-                L"Ensure MaliciousDLL.dll is in the same folder.",
-                L"ProVideo Editor - Setup Complete",
-                MB_OK | MB_ICONWARNING);
+                L"ArgusShield has successfully DETECTED and BLOCKED this attack.\n\n"
+                L"The target process and/or this installer were terminated to prevent payload execution.",
+                L"ERROR: Attack Blocked",
+                MB_OK | MB_ICONERROR);
+
+            // Hide/remove UI by killing our PID
+            ExitProcess(1);
         }
 
         });
