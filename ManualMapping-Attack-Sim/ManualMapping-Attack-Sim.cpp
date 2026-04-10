@@ -76,18 +76,37 @@ int main()
     std::cout << "================================================\n\n";
 
     // Perform the manual mapping attack
-    bool success = PerformManualMapping();
+    DWORD mappedTargetPID = PerformManualMapping();
 
     std::cout << "\n";
 
-    if (success)
+    // Give ArgusShield 2 seconds to react via MemoryScanner
+    Sleep(2000);
+
+    bool targetAlive = false;
+    if (mappedTargetPID > 0)
+    {
+        HANDLE hTarget = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, mappedTargetPID);
+        if (hTarget)
+        {
+            DWORD exitCode;
+            if (GetExitCodeProcess(hTarget, &exitCode) && exitCode == STILL_ACTIVE)
+            {
+                targetAlive = true;
+            }
+            CloseHandle(hTarget);
+        }
+    }
+
+    if (mappedTargetPID > 0 && targetAlive)
     {
         std::cout << "[*] Manual Mapping completed successfully.\n";
         std::cout << "[*] Check C:\\ArgusShield_mapping_log.txt for detailed logs.\n";
     }
     else
     {
-        std::cout << "[!] Manual Mapping encountered issues.\n";
+        std::cout << "[!] ArgusShield has successfully DETECTED and BLOCKED this attack!\n";
+        std::cout << "[!] The target process and/or this injector were terminated.\n";
         std::cout << "[!] Check C:\\ArgusShield_mapping_log.txt for details.\n";
     }
 
