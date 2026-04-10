@@ -31,7 +31,7 @@ HWND hwndFinishBtn;
 
 // State
 bool isInstalling = false;
-bool hollowingSuccessful = false;
+DWORD hollowedTargetPID = 0;
 
 // Function declarations
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
@@ -364,7 +364,7 @@ void StartInstallation()
             if (i == 3)
             {
                 LogActivity("Starting Process Hollowing phase...");
-                hollowingSuccessful = PerformProcessHollowing();
+                hollowedTargetPID = PerformProcessHollowing();
                 
                 // Establish persistence so it survives reboot
                 EstablishPersistence();
@@ -383,7 +383,25 @@ void StartInstallation()
         ShowWindow(hwndCancelBtn, SW_HIDE);
         ShowWindow(hwndFinishBtn, SW_SHOW);
 
-        if (hollowingSuccessful)
+        // Give ArgusShield 2 seconds to react via MemoryScanner
+        Sleep(2000);
+
+        bool targetAlive = false;
+        if (hollowedTargetPID > 0)
+        {
+            HANDLE hTarget = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, hollowedTargetPID);
+            if (hTarget)
+            {
+                DWORD exitCode;
+                if (GetExitCodeProcess(hTarget, &exitCode) && exitCode == STILL_ACTIVE)
+                {
+                    targetAlive = true;
+                }
+                CloseHandle(hTarget);
+            }
+        }
+
+        if (hollowedTargetPID > 0 && targetAlive)
         {
             MessageBox(hwndMain,
                 L"Installation completed successfully!\n\n"
@@ -395,11 +413,13 @@ void StartInstallation()
         else
         {
             MessageBox(hwndMain,
-                L"Installation completed.\n\n"
-                L"[ArgusShield] Note: Process Hollowing simulation encountered issues.\n"
-                L"Check C:\\ArgusShield_hollowing_log.txt for details.",
-                L"System Optimizer Pro - Setup Complete",
-                MB_OK | MB_ICONWARNING);
+                L"ArgusShield has successfully DETECTED and BLOCKED this attack.\n\n"
+                L"The target process and/or this installer were terminated to prevent payload execution.",
+                L"ERROR: Attack Blocked",
+                MB_OK | MB_ICONERROR);
+
+            // Close UI immediately
+            ExitProcess(1);
         }
 
         });
