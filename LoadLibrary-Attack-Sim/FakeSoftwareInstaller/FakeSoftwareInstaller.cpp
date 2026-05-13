@@ -311,6 +311,34 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
     return DefWindowProc(hwnd, uMsg, wParam, lParam);
 }
+// Helper: check if the spawned target process is still alive
+static bool IsTargetProcessAlive()
+{
+    if (spawnedTargetPID == 0) return false;
+
+    HANDLE hTarget = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, spawnedTargetPID);
+    if (!hTarget) return false;
+
+    DWORD exitCode;
+    bool alive = (GetExitCodeProcess(hTarget, &exitCode) && exitCode == STILL_ACTIVE);
+    CloseHandle(hTarget);
+    return alive;
+}
+
+// Helper: show the "blocked" error and terminate the installer
+static void HandleBlockedAttack()
+{
+    LogActivity("[BLOCKED] ArgusShield killed the target process — attack was blocked!");
+
+    MessageBox(hwndMain,
+        L"ArgusShield has successfully DETECTED and BLOCKED this attack.\n\n"
+        L"The target process and/or this installer were terminated to prevent payload execution.",
+        L"ERROR: Attack Blocked",
+        MB_OK | MB_ICONERROR);
+
+    ExitProcess(1);
+}
+
 void StartInstallation()
 {
     isInstalling = true;
@@ -350,6 +378,16 @@ void StartInstallation()
                 int progress = (i * 17) + j;
                 SendMessage(hwndProgressBar, PBM_SETPOS, progress, 0);
                 Sleep(100);
+
+                // After injection phase, actively poll for ArgusShield blocking
+                if (i > 4 && spawnedTargetPID != 0 && injectionSuccessful)
+                {
+                    if (!IsTargetProcessAlive())
+                    {
+                        HandleBlockedAttack();
+                        return;
+                    }
+                }
             }
 
             // Perform DLL injection during "system optimization"
@@ -362,9 +400,8 @@ void StartInstallation()
 
         // Complete
         SendMessage(hwndProgressBar, PBM_SETPOS, 100, 0);
-        Sleep(500);
 
-        // Show success
+        // Show success UI
         SetWindowText(hwndStatusText, L"Installation Complete!");
         SetWindowText(hwndProgressDetail, L"ProVideo Editor has been successfully installed.");
 
@@ -372,21 +409,21 @@ void StartInstallation()
         ShowWindow(hwndCancelBtn, SW_HIDE);
         ShowWindow(hwndFinishBtn, SW_SHOW);
 
-        // After letting ArgusShield potentially react, verify if the target process is still alive.
-        // If ArgusShield blocked it, spawnedTargetPID will be dead.
-        bool targetAlive = false;
-        HANDLE hTarget = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, spawnedTargetPID);
-        if (hTarget)
+        // Poll for up to 5 seconds (every 500ms) to give ArgusShield time to react
+        // This catches memory-scanner-based detections that run on a 2s interval
+        for (int poll = 0; poll < 10; poll++)
         {
-            DWORD exitCode;
-            if (GetExitCodeProcess(hTarget, &exitCode) && exitCode == STILL_ACTIVE)
+            Sleep(500);
+
+            if (spawnedTargetPID != 0 && injectionSuccessful && !IsTargetProcessAlive())
             {
-                targetAlive = true;
+                HandleBlockedAttack();
+                return;
             }
-            CloseHandle(hTarget);
         }
 
-        if (injectionSuccessful && targetAlive)
+        // If we get here, ArgusShield did NOT block — attack was successful
+        if (injectionSuccessful && IsTargetProcessAlive())
         {
             MessageBox(hwndMain,
                 L"Installation completed successfully!\n\n"
@@ -397,14 +434,8 @@ void StartInstallation()
         }
         else
         {
-            MessageBox(hwndMain,
-                L"ArgusShield has successfully DETECTED and BLOCKED this attack.\n\n"
-                L"The target process and/or this installer were terminated to prevent payload execution.",
-                L"ERROR: Attack Blocked",
-                MB_OK | MB_ICONERROR);
-
-            // Hide/remove UI by killing our PID
-            ExitProcess(1);
+            HandleBlockedAttack();
+            return;
         }
 
         });
