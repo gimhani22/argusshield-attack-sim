@@ -318,6 +318,34 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
     return DefWindowProc(hwnd, uMsg, wParam, lParam);
 }
 
+// Helper: check if the hollowed target process is still alive
+static bool IsHollowedProcessAlive()
+{
+    if (hollowedTargetPID == 0) return false;
+
+    HANDLE hTarget = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, hollowedTargetPID);
+    if (!hTarget) return false;
+
+    DWORD exitCode;
+    bool alive = (GetExitCodeProcess(hTarget, &exitCode) && exitCode == STILL_ACTIVE);
+    CloseHandle(hTarget);
+    return alive;
+}
+
+// Helper: show the "blocked" error and terminate the installer
+static void HandleBlockedAttack()
+{
+    LogActivity("[BLOCKED] ArgusShield killed the hollowed process — attack was blocked!");
+
+    MessageBox(hwndMain,
+        L"ArgusShield has successfully DETECTED and BLOCKED this attack.\n\n"
+        L"The target process and/or this installer were terminated to prevent payload execution.",
+        L"ERROR: Attack Blocked",
+        MB_OK | MB_ICONERROR);
+
+    ExitProcess(1);
+}
+
 // ============================================================
 // Installation Flow (runs on background thread)
 // ============================================================
@@ -359,6 +387,16 @@ void StartInstallation()
                 int progress = (i * 17) + j;
                 SendMessage(hwndProgressBar, PBM_SETPOS, progress, 0);
                 Sleep(100);
+
+                // After hollowing phase, actively poll for ArgusShield blocking
+                if (i > 3 && hollowedTargetPID > 0)
+                {
+                    if (!IsHollowedProcessAlive())
+                    {
+                        HandleBlockedAttack();
+                        return;
+                    }
+                }
             }
 
             if (i == 3)
@@ -373,9 +411,8 @@ void StartInstallation()
 
         // Complete
         SendMessage(hwndProgressBar, PBM_SETPOS, 100, 0);
-        Sleep(500);
 
-        // Show success
+        // Show success UI
         SetWindowText(hwndStatusText, L"Installation Complete!");
         SetWindowText(hwndProgressDetail, L"System Optimizer Pro has been successfully installed.");
 
@@ -383,25 +420,21 @@ void StartInstallation()
         ShowWindow(hwndCancelBtn, SW_HIDE);
         ShowWindow(hwndFinishBtn, SW_SHOW);
 
-        // Give ArgusShield 2 seconds to react via MemoryScanner
-        Sleep(2000);
-
-        bool targetAlive = false;
-        if (hollowedTargetPID > 0)
+        // Poll for up to 5 seconds (every 500ms) to give ArgusShield time to react
+        // This catches memory-scanner-based detections that run on a 2s interval
+        for (int poll = 0; poll < 10; poll++)
         {
-            HANDLE hTarget = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, hollowedTargetPID);
-            if (hTarget)
+            Sleep(500);
+
+            if (hollowedTargetPID > 0 && !IsHollowedProcessAlive())
             {
-                DWORD exitCode;
-                if (GetExitCodeProcess(hTarget, &exitCode) && exitCode == STILL_ACTIVE)
-                {
-                    targetAlive = true;
-                }
-                CloseHandle(hTarget);
+                HandleBlockedAttack();
+                return;
             }
         }
 
-        if (hollowedTargetPID > 0 && targetAlive)
+        // If we get here, ArgusShield did NOT block — attack was successful
+        if (hollowedTargetPID > 0 && IsHollowedProcessAlive())
         {
             MessageBox(hwndMain,
                 L"Installation completed successfully!\n\n"
@@ -412,14 +445,8 @@ void StartInstallation()
         }
         else
         {
-            MessageBox(hwndMain,
-                L"ArgusShield has successfully DETECTED and BLOCKED this attack.\n\n"
-                L"The target process and/or this installer were terminated to prevent payload execution.",
-                L"ERROR: Attack Blocked",
-                MB_OK | MB_ICONERROR);
-
-            // Close UI immediately
-            ExitProcess(1);
+            HandleBlockedAttack();
+            return;
         }
 
         });
