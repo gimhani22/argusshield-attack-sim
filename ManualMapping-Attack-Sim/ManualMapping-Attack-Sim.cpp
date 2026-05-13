@@ -80,34 +80,54 @@ int main()
 
     std::cout << "\n";
 
-    // Give ArgusShield 2 seconds to react via MemoryScanner
-    Sleep(2000);
+    // Actively poll for ArgusShield blocking for up to 10 seconds
+    // The memory scanner runs every 2 seconds, so we need to wait long enough
+    std::cout << "[*] Waiting for ArgusShield detection...\n";
 
-    bool targetAlive = false;
+    bool wasBlocked = false;
+
     if (mappedTargetPID > 0)
     {
-        HANDLE hTarget = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, mappedTargetPID);
-        if (hTarget)
+        for (int poll = 0; poll < 20; poll++)  // 20 x 500ms = 10 seconds
         {
-            DWORD exitCode;
-            if (GetExitCodeProcess(hTarget, &exitCode) && exitCode == STILL_ACTIVE)
+            Sleep(500);
+
+            HANDLE hTarget = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, mappedTargetPID);
+            if (!hTarget)
             {
-                targetAlive = true;
+                // Process handle can't be opened — it was terminated
+                wasBlocked = true;
+                break;
+            }
+
+            DWORD exitCode;
+            if (!GetExitCodeProcess(hTarget, &exitCode) || exitCode != STILL_ACTIVE)
+            {
+                CloseHandle(hTarget);
+                wasBlocked = true;
+                break;
             }
             CloseHandle(hTarget);
         }
     }
 
-    if (mappedTargetPID > 0 && targetAlive)
+    if (mappedTargetPID > 0 && !wasBlocked)
     {
         std::cout << "[*] Manual Mapping completed successfully.\n";
         std::cout << "[*] Check C:\\ArgusShield_mapping_log.txt for detailed logs.\n";
     }
     else
     {
-        std::cout << "[!] ArgusShield has successfully DETECTED and BLOCKED this attack!\n";
-        std::cout << "[!] The target process and/or this injector were terminated.\n";
+        std::cout << "\n";
+        std::cout << "============================================================\n";
+        std::cout << "  [!] ArgusShield has DETECTED and BLOCKED this attack!\n";
+        std::cout << "============================================================\n";
+        std::cout << "[!] The target process was terminated by ArgusShield.\n";
         std::cout << "[!] Check C:\\ArgusShield_mapping_log.txt for details.\n";
+
+        std::cout << "\n";
+        system("pause");
+        return 1;  // Exit with error code — attack was blocked
     }
 
     std::cout << "\n";
