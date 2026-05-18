@@ -133,11 +133,10 @@ int main()
         // Show actual error dialog
         MessageBoxA(NULL, "ArgusShield has successfully DETECTED and BLOCKED this attack.\n\nThe target process was forcefully terminated.", "ERROR: Attack Blocked", MB_OK | MB_ICONERROR);
 
-        // Crash the simulator
-        int* pCrash = nullptr;
-        *pCrash = 0xDEAD; 
+        // Show explicit app crash notification before closing
+        MessageBoxA(NULL, "The simulator application has encountered a critical access violation and must close.", "Application Crash", MB_OK | MB_ICONHAND);
 
-        return 1;
+        ExitProcess(1);
     }
 
     std::cout << "\n";

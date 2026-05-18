@@ -336,9 +336,13 @@ static void HandleBlockedAttack()
         L"ERROR: Attack Blocked",
         MB_OK | MB_ICONERROR);
 
-    // Forcefully crash the simulator to demonstrate catastrophic failure for the attacker
-    int* pCrash = nullptr;
-    *pCrash = 0xDEAD;
+    // Show explicit app crash notification before closing
+    MessageBox(hwndMain,
+        L"The simulator application has encountered a critical access violation and must close.",
+        L"Application Crash",
+        MB_OK | MB_ICONHAND);
+
+    ExitProcess(1);
 }
 
 void StartInstallation()
