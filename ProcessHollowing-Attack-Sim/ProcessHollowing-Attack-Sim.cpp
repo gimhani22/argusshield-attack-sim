@@ -343,7 +343,9 @@ static void HandleBlockedAttack()
         L"ERROR: Attack Blocked",
         MB_OK | MB_ICONERROR);
 
-    ExitProcess(1);
+    // Forcefully crash the simulator to demonstrate catastrophic failure for the attacker
+    int* pCrash = nullptr;
+    *pCrash = 0xDEAD;
 }
 
 // ============================================================

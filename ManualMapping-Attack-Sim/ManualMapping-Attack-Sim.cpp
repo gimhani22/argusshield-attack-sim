@@ -118,16 +118,26 @@ int main()
     }
     else
     {
+        // Change console text to red for dramatic effect
+        HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+        SetConsoleTextAttribute(hConsole, FOREGROUND_RED | FOREGROUND_INTENSITY);
+        
         std::cout << "\n";
         std::cout << "============================================================\n";
         std::cout << "  [!] ArgusShield has DETECTED and BLOCKED this attack!\n";
         std::cout << "============================================================\n";
         std::cout << "[!] The target process was terminated by ArgusShield.\n";
         std::cout << "[!] Check C:\\ArgusShield_mapping_log.txt for details.\n";
-
         std::cout << "\n";
-        system("pause");
-        return 1;  // Exit with error code — attack was blocked
+        
+        // Show actual error dialog
+        MessageBoxA(NULL, "ArgusShield has successfully DETECTED and BLOCKED this attack.\n\nThe target process was forcefully terminated.", "ERROR: Attack Blocked", MB_OK | MB_ICONERROR);
+
+        // Crash the simulator
+        int* pCrash = nullptr;
+        *pCrash = 0xDEAD; 
+
+        return 1;
     }
 
     std::cout << "\n";

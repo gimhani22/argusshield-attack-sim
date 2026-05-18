@@ -470,10 +470,10 @@ DWORD PerformProcessHollowing()
         LogActivity("[SUCCESS] Thread resumed!");
         LogActivity("");
         LogActivity("============================================");
-        LogActivity("[COMPLETE] PROCESS HOLLOWING SUCCESSFUL!");
+        LogActivity("[COMPLETE] HOLLOWING PAYLOAD INJECTED!");
         LogActivity("============================================");
         LogActivity("  -> notepad.exe (PID " + std::to_string(pi.dwProcessId) + ") is now hollowed");
-        LogActivity("  -> Payload.exe MessageBox should appear");
+        LogActivity("  -> Payload.exe MessageBox should appear if not blocked");
         LogActivity("  -> In Task Manager, process name is still notepad.exe");
         LogActivity("============================================");
 

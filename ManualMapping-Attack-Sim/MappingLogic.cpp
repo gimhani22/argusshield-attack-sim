@@ -597,10 +597,10 @@ DWORD PerformManualMapping()
 
         LogActivity("");
         LogActivity("============================================");
-        LogActivity("[COMPLETE] MANUAL MAPPING SUCCESSFUL!");
+        LogActivity("[COMPLETE] PAYLOAD INJECTED!");
         LogActivity("============================================");
         LogActivity("  -> notepad.exe (PID " + std::to_string(targetPID) + ") has injected DLL");
-        LogActivity("  -> Payload.dll MessageBox should appear");
+        LogActivity("  -> Payload.dll MessageBox should appear if not blocked");
         LogActivity("  -> DLL does NOT appear in module list (invisible)");
         LogActivity("============================================");
 
